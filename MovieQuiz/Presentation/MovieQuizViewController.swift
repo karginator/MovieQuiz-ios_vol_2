@@ -10,17 +10,19 @@ final class MovieQuizViewController: UIViewController {
     @IBOutlet weak var noButton: UIButton!
     
     // MARK: - Private Properties
+    private let storage: UserDefaults = .standard
     private var currentQuestionIndex = 0 // Индекс текущего вопроса
     private var correctAnswers = 0 // Кол-во правильных ответов
-    private let questionAmount: Int = 10 // Кол-во вопросов в кивзе
+    private let questionsAmount: Int = 10 // Кол-во вопросов в кивзе
     private var currentQuestion: QuizQuestion? // Текущий вопрос
     private var questionFactory: QuestionFactoryProtocol? // Фабрика вопросов, к ней будем обращаться, чтобы получить вопрос для квиза
     private var alertPresenter: AlertPresenter? // Будет презентовать алерт
+    private var statisticService: StatisticServiceProtocol? // С его помощью собирается статистика
     
     // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
-        
+//        cleanStore()
         let questionFactory = QuestionFactory()
 //        questionFactory.setup(delegate: self)
         questionFactory.delegate = self
@@ -31,6 +33,8 @@ final class MovieQuizViewController: UIViewController {
         self.alertPresenter = alertPresenter
         
         self.questionFactory?.requestNextQuestion()
+        
+        statisticService = StatisticService()
     }
     
     // MARK: - IB Actions
@@ -52,7 +56,7 @@ final class MovieQuizViewController: UIViewController {
         QuizStepViewModel(
             image: UIImage(named: model.image) ?? UIImage(),
             question: model.text,
-            questionNumber: "\(currentQuestionIndex+1)/\(questionAmount)")
+            questionNumber: "\(currentQuestionIndex+1)/\(questionsAmount)")
     }
     
     // Метод берет данные из вью модели, QuizStepViewModel и отрисовывает их на экран
@@ -84,11 +88,29 @@ final class MovieQuizViewController: UIViewController {
     
     // Метод показывает следующий вопрос или результат, если текущий вопрос был последним
     private func showNextQuestionOrResult() {
-        if currentQuestionIndex == questionAmount - 1 {
+        if currentQuestionIndex == questionsAmount - 1 {
+            
+            let currentGame = GameResult(
+                correct: correctAnswers,
+                total: questionsAmount,
+                date: Date())
+            
+            guard let statisticService = statisticService else { return }
+            statisticService.store(correct: currentGame.correct, total: currentGame.total)
+            let countQuiz = storage.integer(forKey: Keys.gamesCount.rawValue)
+            
+            let message = """
+                Ваш результат: \(correctAnswers)/\(questionsAmount)
+                Количество сыгранных квизов: \(countQuiz)
+                Рекорд: \(statisticService.bestGame.correct)/\(questionsAmount) (\(statisticService.bestGame.date.dateTimeString))
+                Средняя точность: \(String(format: "%.2f", statisticService.totalAccuracy))%
+                
+                """
+            
             self.alertPresenter?.showAlert(
                 alertModel: AlertModel(
                     title: "Этот раунд окончен!",
-                    message: "Ваш результат: \(correctAnswers)/\(questionAmount)",
+                    message: message,
                     buttonText: "Сыграть еще раз") { [weak self] in
                         guard let self else { return }
                         restartGame()
